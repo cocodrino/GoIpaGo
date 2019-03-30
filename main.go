@@ -196,5 +196,5 @@ func init(){
 func main() {
 	//dictionary := make(map[string]string)
 	
-	fmt.Println(Pronounce(Ipa, "what! are you doing today let me know now. motherfucker"))
+	fmt.Println(Pronounce(Ipa, "what! are you doing today let me know now."))
 }
