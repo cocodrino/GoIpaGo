@@ -2,12 +2,18 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
 
 	"strings"
+
+	"github.com/gorilla/websocket"
+	"net/http"
+
+	"github.com/bregydoc/gtranslate"
 )
 
 var arphabetToIPA = map[string]string{
@@ -94,6 +100,17 @@ var simplifySounds = map[string]string{
 	"ZH": "zz",
 }
 
+type WebsocketResponse struct {
+	Original   string `json:"original"`
+	Ipa        string `json:"ipa"`
+	Simplified string `json:"simplified"`
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+// en dictionary se van a cargar todas las palabras que contiene el archivo cmudict
 var dictionary = make(map[string]string)
 
 type Format int
@@ -128,23 +145,22 @@ func Pronounce(format Format, text string) string {
 	return str.String()
 }
 
-
 //receive format: ipa or simplified and some cmu string extracted from the dictionary, return the same world but
-//displaying the ipa or simplified pronunciation
+//displaying the ipa or simplified pronunciation for instance WHAT soundCMU is W AH1 T
 func arphabetTo(format Format, soundCMU string) string {
 	requiredMap := simplifySounds
 	if format == Ipa {
 		requiredMap = arphabetToIPA
 	}
-	soundsCMU := strings.Split(soundCMU, " ")
+	soundsCMU := strings.Split(soundCMU, " ") //convert "W AH1 T" in ["W","AH1","T"]
 	soundWords := make([]string, len(soundsCMU))
 
 	notDigitRg := regexp.MustCompile(`\d`)
 	for _, sound := range soundsCMU {
-		sound = notDigitRg.ReplaceAllString(sound, "")
+		sound = notDigitRg.ReplaceAllString(sound, "") //remove the digits in the CMU sound
 
 		if soundWord, ok := requiredMap[sound]; ok {
-			soundWords = append(soundWords, soundWord)
+			soundWords = append(soundWords, soundWord) //for cmu AH return f.i ha
 		} else {
 			soundWords = append(soundWords, sound)
 		}
@@ -154,7 +170,7 @@ func arphabetTo(format Format, soundCMU string) string {
 	return strings.Join(soundWords, "")
 }
 
-// check the cmu dictionary wor the world and returns the cmu pronunciation
+// check the cmu dictionary cmudict for the world and returns the cmu pronunciation
 func getArphabetPhonetic(word string) (string, bool) {
 	if val, ok := dictionary[word]; ok {
 		return val, true
@@ -162,8 +178,8 @@ func getArphabetPhonetic(word string) (string, bool) {
 	return word, false
 }
 
-func init(){
-	parser,_ = NewParsePronunciator()
+func init() {
+	parser, _ = NewParsePronunciator()
 	file, err := os.Open("cmudict-0.7b.txt")
 	if err != nil {
 		log.Fatal("error opening file")
@@ -193,8 +209,42 @@ func init(){
 	}
 }
 
+//run go run $(ls -1 *.go | grep -v _test.go)
 func main() {
 	//dictionary := make(map[string]string)
-	
+
 	fmt.Println(Pronounce(Ipa, "what! are you doing today let me know now."))
+	http.HandleFunc("/translate", func(w http.ResponseWriter, request *http.Request) {
+		conn, _ := upgrader.Upgrade(w, request, nil)
+
+		for {
+			msgType, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+
+			fmt.Println(string(msg))
+			//resp := Pronounce(Ipa, string(msg))
+			translatedText,err := gtranslate.TranslateWithFromTo(string(msg),gtranslate.FromTo{From:"auto",To:"en"})
+			if err != nil{
+				fmt.Println("error translating ",err)
+			}
+
+			jsonObj := &WebsocketResponse{Original: translatedText, Ipa: Pronounce(Ipa, translatedText), Simplified: Pronounce(Simplified, translatedText)}
+			fmt.Println(jsonObj)
+			resp, err := json.Marshal(jsonObj)
+			fmt.Println("json", string(resp))
+
+			if err != nil {
+				fmt.Println("error json ", err)
+			}
+
+			if err = conn.WriteMessage(msgType, resp); err != nil {
+
+			}
+		}
+	})
+
+	http.ListenAndServe(":8080", nil)
+
 }
