@@ -37,9 +37,9 @@ var arphabetToIPA = map[string]string{
 	"IY": "i",
 	"JH": "dʒ",
 	"K":  "k",
-	"L":  "l̩",
-	"M":  "m̩",
-	"N":  "n̩",
+	"L":  "l",
+	"M":  "m",
+	"N":  "n",
 	"NG": "ŋ",
 	"OW": "oʊ",
 	"OY": "ɔɪ",
@@ -79,9 +79,9 @@ var simplifySounds = map[string]string{
 	"IY": "ii",
 	"JH": "y",
 	"K":  "k",
-	"L":  "l̩",
-	"M":  "m̩",
-	"N":  "n̩",
+	"L":  "l",
+	"M":  "m",
+	"N":  "n",
 	"NG": "n",
 	"OW": "Ou",
 	"OY": "Oy",
@@ -122,61 +122,7 @@ const (
 
 var parser *ParsePronunciator
 
-func Pronounce(format Format, text string) string {
-	var str strings.Builder
-	elements := parser.getElements(text)
 
-	for _, element := range elements {
-		switch element.elementType {
-		case Symbol:
-			str.WriteString(element.value)
-		case Space:
-			str.WriteString(" ")
-		case World:
-			arphabetSound, wasFound := getArphabetPhonetic(strings.ToLower(element.value))
-			if !wasFound {
-				str.WriteString(element.value)
-				continue
-			}
-			word := arphabetTo(format, arphabetSound)
-			str.WriteString(word)
-		}
-	}
-	return str.String()
-}
-
-//receive format: ipa or simplified and some cmu string extracted from the dictionary, return the same world but
-//displaying the ipa or simplified pronunciation for instance WHAT soundCMU is W AH1 T
-func arphabetTo(format Format, soundCMU string) string {
-	requiredMap := simplifySounds
-	if format == Ipa {
-		requiredMap = arphabetToIPA
-	}
-	soundsCMU := strings.Split(soundCMU, " ") //convert "W AH1 T" in ["W","AH1","T"]
-	soundWords := make([]string, len(soundsCMU))
-
-	notDigitRg := regexp.MustCompile(`\d`)
-	for _, sound := range soundsCMU {
-		sound = notDigitRg.ReplaceAllString(sound, "") //remove the digits in the CMU sound
-
-		if soundWord, ok := requiredMap[sound]; ok {
-			soundWords = append(soundWords, soundWord) //for cmu AH return f.i ha
-		} else {
-			soundWords = append(soundWords, sound)
-		}
-
-	}
-
-	return strings.Join(soundWords, "")
-}
-
-// check the cmu dictionary cmudict for the world and returns the cmu pronunciation
-func getArphabetPhonetic(word string) (string, bool) {
-	if val, ok := dictionary[word]; ok {
-		return val, true
-	}
-	return word, false
-}
 
 func init() {
 	parser, _ = NewParsePronunciator()
@@ -197,12 +143,15 @@ func init() {
 
 		words := strings.Split(text, " ")
 		if len(words) > 1 {
+			//for instance "A" cmu sound is AH0
+			//so we take the A as key for our dictionary and join the rest of words AH0 and other sounds
+			// hello would ve dictionary["hello"] "HH AH0 L OW1"
 			dictionary[strings.ToLower(words[0])] = strings.TrimSpace(strings.Join(words[1:], " "))
 		}
 	}
 
-	fmt.Println("imprimiendo hola")
-	fmt.Println(dictionary["HELLO"])
+	//fmt.Println("imprimiendo hola")
+	//fmt.Println(dictionary["hello"])
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal("error with scanner ", err)
@@ -213,7 +162,7 @@ func init() {
 func main() {
 	//dictionary := make(map[string]string)
 
-	fmt.Println(Pronounce(Ipa, "what! are you doing today let me know now."))
+	//fmt.Println(Pronounce(Ipa, "what! are you doing today let me know now."))
 	http.HandleFunc("/translate", func(w http.ResponseWriter, request *http.Request) {
 		conn, _ := upgrader.Upgrade(w, request, nil)
 
@@ -245,6 +194,10 @@ func main() {
 		}
 	})
 
-	http.ListenAndServe(":8080", nil)
+	fmt.Println("server running in port :8080, you can start to translating using the endpoint /translate")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil{
+		fmt.Println("error running the server >\n", err)
+	}
 
 }
